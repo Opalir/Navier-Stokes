@@ -42,9 +42,6 @@ const int jacobiIterations = 10;
 float interpolateF(float point,int x0,float y0,int x1,float y1){ //avec des floats
 	return ((y1-y0)*point+(y0*x1-x0*y1))/(x1-x0);
 }
-float interpolateI(float point,int x0,int y0,int x1,int y1){ //avec des ints
-	return ((y1-y0)*point+(y0*x1-x0*y1))/(x1-x0);
-}
 void advect(){
 	int tempsTotal = 0;
 	//sf::Clock clock;
@@ -156,9 +153,9 @@ void advectColor(){
 
 
 			//if(x==5)cout<<x<<" "<<y<<":"<<upleft.x<<" "<<upleft.y<<":"<<colorField[upleft.x][upleft.y]<<endl;
-			float top= interpolateI(wantx,upleft.x,colorField[upleft.x][upleft.y],upright.x,colorField[upright.x][upright.y]);
-			float bot = interpolateI(wantx,downleft.x,colorField[downleft.x][downleft.y],downright.x,colorField[downright.x][downright.y]);
-			float middle = interpolateI(wanty,upleft.y,top,downleft.y,bot);
+			float top= interpolateF(wantx,upleft.x,colorField[upleft.x][upleft.y],upright.x,colorField[upright.x][upright.y]);
+			float bot = interpolateF(wantx,downleft.x,colorField[downleft.x][downleft.y],downright.x,colorField[downright.x][downright.y]);
+			float middle = interpolateF(wanty,upleft.y,top,downleft.y,bot);
 
 			nextField1[x][y]= middle;
 		}
