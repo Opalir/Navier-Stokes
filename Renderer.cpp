@@ -1,9 +1,3 @@
-/*
- * Renderer.cpp
- *
- *  Created on: 25 oct. 2020
- *      Author: Thomas
- */
 
 
 

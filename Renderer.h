@@ -1,10 +1,3 @@
-/*
- * Renderer.h
- *
- *  Created on: 25 oct. 2020
- *      Author: Thomas
- */
-
 #ifndef RENDERER_H_
 #define RENDERER_H_
 
