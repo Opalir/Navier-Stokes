@@ -1,2 +1,2 @@
 # Navier-Stokes
-C++ navier-stokes
+C++ Incompressible fluid simulation
