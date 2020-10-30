@@ -1,3 +1,4 @@
 # Navier-Stokes
 C++ Incompressible fluid simulation.
-Rendering using SFML2.5 library.
+Every calculations are done with opencv martix.
+3 times faster as the first implementation (SFML branch)
