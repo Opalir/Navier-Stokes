@@ -1,14 +1,23 @@
+/*
+ * Navier-Stokes simulation for incompressible fluid
+ * C++ using opencv.
+ * Every calculations are done with matrix
+ *
+ *      Author: Opalir
+ */
+
+
 #include <iostream>
-#include <SFML/Graphics.hpp>
-#include <cmath>
-#include <vector>
+
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include "Renderer.h"
+
 using namespace std;
 
 
-const int mouseAdd = 150;
-sf::Vector2i lastMousePos(0,0);
+const float mouseAdd = 0.5;
 const float delta =0.1;
 const float rho = 1;
 
@@ -17,237 +26,164 @@ int mouseButton = 0;
 
 int mouseX,mouseY,lastmouseY,lastmouseX;
 
-
-//int clock = 0;
-
-float nextField1[GRID_WIDTH][GRID_HEIGHT] = {};
-float pressureTab[GRID_WIDTH][GRID_HEIGHT] ={};
-
-float fieldx[GRID_WIDTH][GRID_HEIGHT] = {};
-float fieldy[GRID_WIDTH][GRID_HEIGHT] = {};
-float nextField2x[GRID_WIDTH][GRID_HEIGHT] = {};
-float nextField2y[GRID_WIDTH][GRID_HEIGHT] = {};
-
-float divergenceTab[GRID_WIDTH][GRID_HEIGHT] = {};
-float colorField[GRID_WIDTH][GRID_HEIGHT] = {};
-
-
 const float pressCoef = -((2*rho)/delta); //attention div
 const float correctCoef = delta/(2*rho);
 
+cv::Mat meshGridX(GRID_HEIGHT, GRID_WIDTH, CV_32F);
+cv::Mat meshGridY(GRID_HEIGHT, GRID_WIDTH, CV_32F);
+
+cv::Mat colorFld = cv::Mat::zeros(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
+
+cv::Mat fldx = cv::Mat::zeros(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
+cv::Mat fldy= cv::Mat::zeros(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
+
+cv::Mat pressureFld= cv::Mat::zeros(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
+
+
+float kerDatax[1][3] = {-1,0,1};
+cv::Mat ker1(cv::Size(3,1),CV_32F,kerDatax);
+cv::Mat ker2(cv::Size(1,3),CV_32F,kerDatax);
+
+float kerData2[5][5] = {{0,0,1,0,0},{0,0,0,0,0},{1,0,0,0,1},{0,0,0,0,0},{0,0,1,0,0}};
+cv::Mat ker3(cv::Size(5,5),CV_32F,kerData2);
 
 const int jacobiIterations = 10;
 
-
-float interpolateF(float point,int x0,float y0,int x1,float y1){ //avec des floats
-	return ((y1-y0)*point+(y0*x1-x0*y1))/(x1-x0);
-}
 void advect(){
-	int tempsTotal = 0;
-	//sf::Clock clock;
+    cv::Mat mapX_x = meshGridX - fldx * delta;
+    cv::Mat mapX_y = meshGridY - fldy * delta;
 
-	for(int x=1;x<GRID_WIDTH-1;x++){
-		for(int y=1;y<GRID_HEIGHT-1;y++){
-				//Coordonnées du point recherché.
-				float wantx = x-fieldx[x][y]*delta; //avec vitesse en x
-				float wanty = y-fieldy[x][y]*delta; //avec vitesse en y
+    cv::Mat dstX(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
+    cv::Mat dstY(cv::Size(GRID_WIDTH, GRID_HEIGHT), CV_32F);
 
+    cv::remap(fldx, dstX, mapX_x, mapX_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT); //Interpolation bilinéaire
+    cv::remap(fldy, dstY, mapX_x, mapX_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT); //Interpolation bilinéaire
 
-				//Calcul de la case qui entoure le point recherché
-				int leftx = floor(wantx);
-				int rightx = leftx+1;
-				int upy = floor(wanty);
-				int downy = upy+1;
-
-
-
-				//Interpolation sur le segment du haut.
-				float topx = interpolateF(wantx,leftx,fieldx[leftx][upy],rightx,fieldx[rightx][upy]); //avec la vitesse x
-				float topy = interpolateF(wantx,leftx,fieldy[leftx][upy],rightx,fieldy[rightx][upy]); //avec la vitesse y
-
-				//Interpolation sur le segment du bas.
-				float botx = interpolateF(wantx,leftx,fieldx[leftx][downy],rightx,fieldx[rightx][downy]); //avec la vitesse x
-				float boty = interpolateF(wantx,leftx,fieldy[leftx][downy],rightx,fieldy[rightx][downy]); //avec la vitesse y
-
-
-				//Interpolation de haut en bas à partir des 2 trouvées + haut.
-				float middlex = interpolateF(wanty,upy,topx,downy,botx); //avec la vitesse x
-				float middley = interpolateF(wanty,upy,topy,downy,boty); //avec la vitesse y
-
-
-				//tempsTotal+=clock.getElapsedTime().asMicroseconds(); //Ajout du temps total
-				//clock.restart(); //restart de la clock
-
-				//Copie du tableau
-				nextField2x[x][y]=middlex;
-				nextField2y[x][y]=middley;
-			}
-		}
-		cout<<"Interpolation : "<<tempsTotal<<" microseconds"<<endl;
-		for(int x=1;x<GRID_WIDTH-1;x++){
-			for(int y=1;y<GRID_HEIGHT-1;y++){
-				fieldx[x][y] = nextField2x[x][y];
-				fieldy[x][y] = nextField2y[x][y];//TODO with vector
-			}
-		}
-
+    fldx = dstX;
+    fldy = dstY;
 }
+void calcPressure(){
+	cv::Mat dstDivx = cv::Mat(cv::Size(GRID_WIDTH,GRID_HEIGHT),CV_32F);
+	cv::Mat dstDivy = cv::Mat(cv::Size(GRID_WIDTH,GRID_HEIGHT),CV_32F);
+	cv::filter2D(fldx,dstDivx,-1,ker1); //Convolution : Noyau ker1   => A[x][y] = A[x+1][y]-A[x-1][y]
+	cv::filter2D(fldy,dstDivy,-1,ker2); //Convolution : Noyau ker2   => A[x][y] = A[x][y+1]-A[x][y-1]
 
-void calcPressure(){ //TODO with vects
-	for(int x=2;x<GRID_WIDTH-2;x++){
-		for(int y=2;y<GRID_HEIGHT-2;y++){
-			divergenceTab[x][y] = pressCoef*(fieldx[x+1][y]-fieldx[x-1][y]+fieldy[x][y+1]-fieldy[x][y-1]);
-		}
-	}
-	for(int x=2;x<GRID_WIDTH-2;x++){
-		for(int y=2;y<GRID_HEIGHT-2;y++){
-			nextField1[x][y] = (divergenceTab[x][y]+pressureTab[x+2][y]+pressureTab[x-2][y]+pressureTab[x][y-2]+pressureTab[x][y+2])/4;
-		}
-	}
+	cv::Mat divFld = pressCoef*(dstDivx+dstDivy);
 
-	for(int x=2;x<GRID_WIDTH-2;x++){
-		for(int y=2;y<GRID_HEIGHT-2;y++){
-			pressureTab[x][y] = nextField1[x][y];
-		}
-	}
-	//Puis on compute les pressions
-	for(int i=0;i<jacobiIterations-1;i++){
-		for(int x=2;x<GRID_WIDTH-2;x++){
-			for(int y=2;y<GRID_HEIGHT-2;y++){
-				nextField1[x][y] = (divergenceTab[x][y]+pressureTab[x+2][y]+pressureTab[x-2][y]+pressureTab[x][y-2]+pressureTab[x][y+2])/4;
-			}
-		}
-		for(int x=2;x<GRID_WIDTH-2;x++){
-			for(int y=2;y<GRID_HEIGHT-2;y++){
-				pressureTab[x][y] = nextField1[x][y];
-				//cout<<pressureTab[x][y];
+	cv::Mat convolutedPressureFld = cv::Mat(cv::Size(GRID_WIDTH,GRID_HEIGHT),CV_32F);
 
-			}
-			//cout<<endl;
-		}
+	for(int i=0;i<jacobiIterations;i++){
+		cv::filter2D(pressureFld,convolutedPressureFld,-1,ker3,cv::Point(-1,-1),0,cv::BORDER_CONSTANT); //Convolution : Noyau ker3   => A[x][y] = A[x+2][y]+A[x-2][y]+A[x][y+2]+A[x][y-2]
+		pressureFld = (divFld + convolutedPressureFld)/4;
 	}
 }
 void correctField(){
-	for(int x=1;x<GRID_WIDTH-1;x++){
-		for(int y=1;y<GRID_HEIGHT-1;y++){
-			//sf::Vector2f fieldNode =  field[x][y];
-			fieldx[x][y] = fieldx[x][y]-correctCoef*(pressureTab[x+1][y]-pressureTab[x-1][y]);
-			fieldy[x][y] = fieldy[x][y]-correctCoef*(pressureTab[x][y+1]-pressureTab[x][y-1]);
-		}
-	}
+	cv::Mat dstPressx = cv::Mat(cv::Size(GRID_WIDTH,GRID_HEIGHT),CV_32F);
+	cv::Mat dstPressy = cv::Mat(cv::Size(GRID_WIDTH,GRID_HEIGHT),CV_32F);
+
+	cv::filter2D(pressureFld,dstPressx,-1,ker1); //convolution
+	cv::filter2D(pressureFld,dstPressy,-1,ker2); //convolution
+
+	fldx= fldx - correctCoef*dstPressx;
+	fldy= fldy - correctCoef*dstPressy;
 }
 void advectColor(){
-
-	for(int x=1;x<GRID_WIDTH-1;x++){
-		for(int y=1;y<GRID_HEIGHT-1;y++){
-			float wantx = x-fieldx[x][y]*delta;
-			float wanty = y-fieldy[x][y]*delta;
-
-			//ATTENTION coords pas objet
-			int x1 = (int)floor(wantx);
-			int y1 = (int)floor(wanty);
-			sf::Vector2i upleft(x1,y1);
-			sf::Vector2i upright(upleft.x+1,upleft.y);
-			sf::Vector2i downright(upleft.x+1,upleft.y+1);
-			sf::Vector2i downleft(upleft.x,upleft.y+1);
-
-
-			//if(x==5)cout<<x<<" "<<y<<":"<<upleft.x<<" "<<upleft.y<<":"<<colorField[upleft.x][upleft.y]<<endl;
-			float top= interpolateF(wantx,upleft.x,colorField[upleft.x][upleft.y],upright.x,colorField[upright.x][upright.y]);
-			float bot = interpolateF(wantx,downleft.x,colorField[downleft.x][downleft.y],downright.x,colorField[downright.x][downright.y]);
-			float middle = interpolateF(wanty,upleft.y,top,downleft.y,bot);
-
-			nextField1[x][y]= middle;
-		}
-	}
-	for(int x=1;x<GRID_WIDTH-1;x++){
-		for(int y=1;y<GRID_HEIGHT-1;y++){
-			colorField[x][y] = nextField1[x][y];
-		}
-	}
+	cv::Mat mapX_x = meshGridX - fldx * delta;
+	cv::Mat mapX_y = meshGridY - fldy * delta;
+	cv::Mat src = colorFld;
+	cv::remap(src,colorFld, mapX_x, mapX_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
 }
 void computeBounds(){
-	for(int x=0;x<GRID_WIDTH;x++){
-		fieldy[x][1] = -fieldy[x][2];
-		fieldx[x][1] = 0;
-	}
-	for(int y=0;y<GRID_HEIGHT;y++){
-		fieldx[1][y] = -fieldx[2][y];
-		fieldy[1][y] = 0;
-	}
-	for(int x=0;x<GRID_WIDTH;x++){
-		fieldy[x][GRID_HEIGHT-2] = -fieldy[x][GRID_HEIGHT-3];
-		fieldx[x][GRID_HEIGHT-2] = 0;
-	}
-	for(int y=0;y<GRID_HEIGHT;y++){
-		fieldx[GRID_WIDTH-2][y] = -fieldx[GRID_WIDTH-3][y];
-		fieldy[GRID_WIDTH-2][y] = 0;
-	}
+	//Inutile ?
+	fldy.row(1) = -fldy.row(2);
+	fldx.row(1) = cv::Mat::zeros(1,GRID_WIDTH,CV_32F);
+	fldy.row(GRID_WIDTH-2) = -fldy.row(GRID_WIDTH-3);
+	fldx.row(GRID_WIDTH-2) =cv::Mat::zeros(1,GRID_WIDTH,CV_32F);
+
+	fldy.col(1) = cv::Mat::zeros(GRID_HEIGHT,1,CV_32F);
+	fldx.col(1) = -fldx.col(2);
+	fldy.col(GRID_HEIGHT-2) = cv::Mat::zeros(GRID_HEIGHT,1,CV_32F);
+	fldx.col(GRID_HEIGHT-2) = -fldx.col(GRID_HEIGHT-3);
 }
 void getInputs(){
-	sf::Vector2i mousePos = sf::Mouse::getPosition(window);
-	sf::Vector2i mouseGrid;
-	mouseGrid.x =floor(mousePos.x/resolution);
-	mouseGrid.y =floor(mousePos.y/resolution);
-	if(sf::Mouse::isButtonPressed(sf::Mouse::Left)){
-		int depx = mousePos.x-lastMousePos.x;
-		int depy = mousePos.y-lastMousePos.y;
-		colorField[mouseGrid.x][mouseGrid.y]+=mouseAdd/2;
-		for(int i =0;i<5;i++){
-			for(int j =0;j<5;j++){
-				fieldx[mouseGrid.x+i][mouseGrid.y+j] += depx*7;
-				fieldy[mouseGrid.x+i][mouseGrid.y+j] += depy*7;
-				colorField[mouseGrid.x+i][mouseGrid.y+j]+=mouseAdd/2;
+	if(mousePressed){
+		int depx = mouseX-lastmouseX;
+		int depy = mouseY-lastmouseY;
 
-			}
-		}
+		cv::circle(fldx,cv::Point(mouseX,mouseY),5,depx*7,-1);
+		cv::circle(fldy,cv::Point(mouseX,mouseY),5,depy*7,-1);
+		cv::circle(colorFld,cv::Point(mouseX,mouseY),5,1,-1);
 	}
-	lastMousePos = mousePos;
+	lastmouseX = mouseX;
+	lastmouseY = mouseY;
+
+	/*  PASSIVE SOURCE ACTIVATION  (5 is source size,  10 is velocity,   1 is added color (from 0 to 1))
+	 * cv::circle(fldx,cv::Point(150,50),5,10,-1);
+	cv::circle(colorFld,cv::Point(150,50),5,1,-1);
+	*/
 
 }
 void update(){
-	sf::Clock clock;
+	clock_t debtime = clock();
 	advect();
-	std::cout<<"Advect :"<<clock.getElapsedTime().asMilliseconds()<<"ms";
-	clock.restart();
+	std::cout<<"Advect :"<<(clock()-debtime)<<"ms";
+	debtime = clock();
 	calcPressure();
-	std::cout<<"-Pressure :"<<clock.getElapsedTime().asMilliseconds()<<"ms";
-	clock.restart();
+	std::cout<<"-Pressure :"<<(clock()-debtime)<<"ms";
+	debtime = clock();
 	correctField();
-	std::cout<<"-Correct :"<<clock.getElapsedTime().asMilliseconds()<<"ms";
-	clock.restart();
-	computeBounds();
-	std::cout<<"-Bounds :"<<clock.getElapsedTime().asMilliseconds()<<"ms";
-	clock.restart();
+	std::cout<<"-Correct :"<<(clock()-debtime)<<"ms";
+	debtime = clock();
+	//computeBounds();
+	std::cout<<"-Bounds :"<<(clock()-debtime)<<"ms";
+	debtime = clock();
 	advectColor();
-	std::cout<<"-Color :"<<clock.getElapsedTime().asMilliseconds()<<"ms"<<endl;
-	clock.restart();
+	std::cout<<"-Color :"<<(clock()-debtime)<<"ms"<<endl;
+	debtime = clock();
 
+}
+void mouse_callback(int  event, int  x, int  y, int  flag, void *param)
+{
+	if (event == cv::EVENT_LBUTTONDOWN ){
+		mousePressed = true;
+	}
+	if (event == cv::EVENT_LBUTTONUP ){
+		mousePressed = false;
+	}
+    if (event == cv::EVENT_MOUSEMOVE) {
+		mouseX = x;
+		mouseY = y;
+    }
+}
+void initRender(){
+	 cv::namedWindow("Navier-Stokes",cv::WINDOW_NORMAL);
+	 cv::setMouseCallback("Navier-Stokes", mouse_callback);
+	 cv::resizeWindow("Navier-Stokes", canvW,canvH);
 }
 int main()
 {
-	initRender();
-	 // run the program as long as the window is open
-	    while (window.isOpen())
-	    {
+    // Init meshgrid
+    for (int i = 0; i < GRID_WIDTH; ++i) {
+        for (int j = 0; j < GRID_HEIGHT; ++j) {
+            meshGridX.at<float>(j,i) = i;
+            meshGridY.at<float>(j,i) = j;
+        }
+    }
 
-	        // check all the window's events that were triggered since the last iteration of the loop
-	        sf::Event event;
-	        while (window.pollEvent(event))
-	        {
-	            // "close requested" event: we close the window
-	            if (event.type == sf::Event::Closed)
-	                window.close();
-	        }
-	        //getInputs();
-	        getInputs();
-	        sf::Clock clock;
-	        update();
-	        std::cout<<"Update :"<<clock.getElapsedTime().asMicroseconds()<<"micros";
-	        clock.restart();
-	        render();
-	        std::cout<<"-Render :"<<clock.getElapsedTime().asMicroseconds()<<"micros"<<std::endl;
-	    }
+    initRender();
+
+	while(true){
+		getInputs();
+
+		clock_t debtime = clock();
+		update();
+		std::cout<<"Update :"<<(clock()-debtime)<<"ms"<<endl;
+		debtime = clock();
+		render();
+		std::cout<<"Render :"<<(clock()-debtime)<<"ms"<<endl;
+
+		cv::waitKey(1); //wait 1ms and go to next frame
+	}
     return 0;
 }
 

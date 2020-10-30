@@ -1,18 +1,18 @@
 #ifndef RENDERER_H_
 #define RENDERER_H_
 
-#include <SFML/Graphics.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
-extern sf::RenderWindow window;
 constexpr int resolution = 2;
-constexpr int canvW  = 500;
-constexpr int canvH = 500;
-constexpr int GRID_HEIGHT = canvH/resolution;
-constexpr int GRID_WIDTH = canvW/resolution;
 
-extern float colorField[GRID_WIDTH][GRID_HEIGHT];
-extern float fieldx[GRID_WIDTH][GRID_HEIGHT];
-extern float fieldy[GRID_WIDTH][GRID_HEIGHT];
+constexpr int GRID_HEIGHT = 250;
+constexpr int GRID_WIDTH = 250;
+constexpr int canvW = GRID_WIDTH*resolution;
+constexpr int canvH = GRID_HEIGHT*resolution;
+
+extern cv::Mat colorFld;
 extern const int resolution;
 
 
